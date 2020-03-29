@@ -41,4 +41,9 @@ public class BookController {
     public List<Map<String, Object>> getAllBooks(){
         return bookDao.getAllBooks();
     }
+    
+    @GetMapping("/assignedTitleBooks/{content}")
+    public List<Map<String, Object>> getAssignedTitleBooks(@PathVariable String content){
+        return bookDao.getAssignedTitleBooks(content);
+    }
 }

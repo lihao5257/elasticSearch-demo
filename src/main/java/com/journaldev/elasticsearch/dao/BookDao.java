@@ -15,8 +15,12 @@ import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.action.update.UpdateResponse;
 import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.common.unit.Fuzziness;
 import org.elasticsearch.common.xcontent.XContentType;
+import org.elasticsearch.index.query.MatchQueryBuilder;
+import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -28,76 +32,80 @@ import java.util.UUID;
 @Repository
 public class BookDao {
 
-    private final String INDEX = "bookdata";
-    private final String TYPE = "books";
+	private final String INDEX = "bookdata";
+	private final String TYPE = "books";
 
-    private RestHighLevelClient restHighLevelClient;
+	private RestHighLevelClient restHighLevelClient;
 
-    private ObjectMapper objectMapper;
+	private ObjectMapper objectMapper;
 
-    public BookDao( ObjectMapper objectMapper, RestHighLevelClient restHighLevelClient) {
-        this.objectMapper = objectMapper;
-        this.restHighLevelClient = restHighLevelClient;
-    }
+	public BookDao(ObjectMapper objectMapper, RestHighLevelClient restHighLevelClient) {
+		this.objectMapper = objectMapper;
+		this.restHighLevelClient = restHighLevelClient;
+	}
 
-    public Book insertBook(Book book){
-        book.setId(UUID.randomUUID().toString());
-        @SuppressWarnings("unchecked")
+	public Book insertBook(Book book) {
+		book.setId(UUID.randomUUID().toString());
+		@SuppressWarnings("unchecked")
 		Map<String, Object> dataMap = objectMapper.convertValue(book, Map.class);
-        IndexRequest indexRequest = new IndexRequest(INDEX, TYPE, book.getId())
-                .source(dataMap);
-        try {
-            restHighLevelClient.index(indexRequest);
-        } catch(ElasticsearchException e) {
-            e.getDetailedMessage();
-        } catch (java.io.IOException ex){
-            ex.getLocalizedMessage();
-        }
-        return book;
-    }
+		IndexRequest indexRequest = new IndexRequest(INDEX, TYPE, book.getId()).source(dataMap);
+		try {
+			restHighLevelClient.index(indexRequest);
+		} catch (ElasticsearchException e) {
+			e.getDetailedMessage();
+		} catch (java.io.IOException ex) {
+			ex.getLocalizedMessage();
+		}
+		return book;
+	}
 
-    public Map<String, Object> getBookById(String id){
-        GetRequest getRequest = new GetRequest(INDEX, TYPE, id);
-        GetResponse getResponse = null;
-        try {
-            getResponse = restHighLevelClient.get(getRequest);
-        } catch (java.io.IOException e){
-            e.getLocalizedMessage();
-        }
-        Map<String, Object> sourceAsMap = getResponse.getSourceAsMap();
-        return sourceAsMap;
-    }
+	public Map<String, Object> getBookById(String id) {
+		GetRequest getRequest = new GetRequest(INDEX, TYPE, id);
+		GetResponse getResponse = null;
+		try {
+			getResponse = restHighLevelClient.get(getRequest);
+		} catch (java.io.IOException e) {
+			e.getLocalizedMessage();
+		}
+		Map<String, Object> sourceAsMap = getResponse.getSourceAsMap();
+		return sourceAsMap;
+	}
 
-    public Map<String, Object> updateBookById(String id, Book book){
-        UpdateRequest updateRequest = new UpdateRequest(INDEX, TYPE, id)
-                .fetchSource(true);    // Fetch Object after its update
-        Map<String, Object> error = new HashMap<>();
-        error.put("Error", "Unable to update book");
-        try {
-            String bookJson = objectMapper.writeValueAsString(book);
-            updateRequest.doc(bookJson, XContentType.JSON);
-            UpdateResponse updateResponse = restHighLevelClient.update(updateRequest);
-            Map<String, Object> sourceAsMap = updateResponse.getGetResult().sourceAsMap();
-            return sourceAsMap;
-        } catch (JsonProcessingException e){
-            e.getMessage();
-        } catch (java.io.IOException e){
-            e.getLocalizedMessage();
-        }
-        return error;
-    }
+	public Map<String, Object> updateBookById(String id, Book book) {
+		UpdateRequest updateRequest = new UpdateRequest(INDEX, TYPE, id).fetchSource(true); // Fetch Object after its
+																							// update
+		Map<String, Object> error = new HashMap<>();
+		error.put("Error", "Unable to update book");
+		try {
+			String bookJson = objectMapper.writeValueAsString(book);
+			updateRequest.doc(bookJson, XContentType.JSON);
+			UpdateResponse updateResponse = restHighLevelClient.update(updateRequest);
+			Map<String, Object> sourceAsMap = updateResponse.getGetResult().sourceAsMap();
+			return sourceAsMap;
+		} catch (JsonProcessingException e) {
+			e.getMessage();
+		} catch (java.io.IOException e) {
+			e.getLocalizedMessage();
+		}
+		return error;
+	}
 
-    public void deleteBookById(String id) {
-        DeleteRequest deleteRequest = new DeleteRequest(INDEX, TYPE, id);
-        try {
-            restHighLevelClient.delete(deleteRequest);
-        } catch (java.io.IOException e){
-            e.getLocalizedMessage();
-        }
-    }
+	public void deleteBookById(String id) {
+		DeleteRequest deleteRequest = new DeleteRequest(INDEX, TYPE, id);
+		try {
+			restHighLevelClient.delete(deleteRequest);
+		} catch (java.io.IOException e) {
+			e.getLocalizedMessage();
+		}
+	}
 
-	public List<Map<String, Object>> getAllBooks(){
-		
+	/*
+	 * It may throw an IOException in case of either failing to parse the REST
+	 * response, the request times out or similar cases where there is no response
+	 * coming back from the server.
+	 */
+	public List<Map<String, Object>> getAllBooks() {
+
 		SearchRequest searchRequest = new SearchRequest(INDEX);
 		searchRequest.types(TYPE);
 		SearchResponse getResponse = null;
@@ -108,10 +116,35 @@ public class BookDao {
 		}
 		SearchHit[] searchHits = getResponse.getHits().getHits();
 		List<Map<String, Object>> list = new ArrayList<Map<String, Object>>();
-		for(SearchHit sh : searchHits) {
+		for (SearchHit sh : searchHits) {
 			list.add(sh.getSourceAsMap());
 		}
 		return list;
-        
+
+	}
+
+	public List<Map<String, Object>> getAssignedTitleBooks(String content) {
+		SearchRequest searchRequest = new SearchRequest(INDEX);
+		searchRequest.types(TYPE);
+		SearchResponse getResponse = null;
+		SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+		MatchQueryBuilder matchQueryBuilder = new MatchQueryBuilder("title", content);
+		matchQueryBuilder.fuzziness(Fuzziness.AUTO); 
+		matchQueryBuilder.prefixLength(3); 
+		matchQueryBuilder.maxExpansions(10); 
+
+		sourceBuilder.query(matchQueryBuilder);
+		searchRequest.source(sourceBuilder);
+		try {
+			getResponse = restHighLevelClient.search(searchRequest);
+		} catch (java.io.IOException e) {
+			e.getLocalizedMessage();
+		}
+		SearchHit[] searchHits = getResponse.getHits().getHits();
+		List<Map<String, Object>> list = new ArrayList<Map<String, Object>>();
+		for (SearchHit sh : searchHits) {
+			list.add(sh.getSourceAsMap());
+		}
+		return list;
 	}
 }

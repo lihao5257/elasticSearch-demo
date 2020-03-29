@@ -19,6 +19,11 @@ public class ElasticSearchConfiguration extends AbstractFactoryBean<RestHighLeve
     private String clusterName;
     private RestHighLevelClient restHighLevelClient;
 
+    /*
+     * Java High Level Rest Client is build on Low Level Client.
+     * When low level client is created, a connection pool with some initial sources had been created.
+     * To relase these resouces , we must artificially close the instances.
+     * */
     @Override
     public void destroy() {
         try {
